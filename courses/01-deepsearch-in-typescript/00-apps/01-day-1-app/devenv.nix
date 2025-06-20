@@ -1,30 +1,72 @@
-{ pkgs, lib, config, inputs, ... }:
-
 {
-  # https://devenv.sh/basics/
-  env.GREET = "devenv";
+  pkgs,
+  lib,
+  config,
+  inputs,
+  ...
+}:
+
+# This uses https://devenv.sh to configure your working environmnt.
+# To use:
+# 1. Install nix: https://nixos.org/download.html 
+# 2  Install `devenv` in your configuration
+# 3. Expose `POSTGRES_PW` and `REDIS_PW` in .env
+# 4. Run `devenv up` to start the environment (^c to stop)
+# 5. Or run `devenv up -d` to start the environment in the background (and `devenv process stop` to kill the background process)
+# 6. Run `devenv test` to confirm everything is working
+{
+  # Import environment variables from .env
+  dotenv.enable = true;
 
   # https://devenv.sh/packages/
-  packages = [ pkgs.git ];
+  # packages = [
+  # ];
 
   # https://devenv.sh/languages/
-  # languages.rust.enable = true;
+  languages = {
+    javascript = {
+      enable = true;
+      pnpm = {
+        enable = true;
+        install.enable = true;
+      };
+    };
+    typescript.enable = true;
+    nix.enable = true;
+  };
 
   # https://devenv.sh/processes/
-  # processes.cargo-watch.exec = "cargo-watch";
+  processes.drizzle.exec = "drizzle-kit studio";
 
   # https://devenv.sh/services/
-  # services.postgres.enable = true;
+  services = {
+    postgres = {
+      enable = true;
+      port = 5432;
+      listen_addresses = "localhost";
+      initialDatabases = [
+        {
+          name = "ai-app-template";
+          user = "postgres";
+          pass = "${config.env.POSTGRES_PW}";
+        }
+      ];
+      initialScript = "CREATE ROLE postgres SUPERUSER;"; 
+      extensions = extensions: [ extensions.pgvector ];
+    };
+    redis = {
+      enable = true;
+      extraConfig = "requirepass ${config.env.REDIS_PW}";
+    };
+  };
 
   # https://devenv.sh/scripts/
-  scripts.hello.exec = ''
-    echo hello from $GREET
-  '';
+  # scripts.hello.exec = ''
+  #   echo hello
+  # '';
 
-  enterShell = ''
-    hello
-    git --version
-  '';
+  # enterShell = ''
+  # '';
 
   # https://devenv.sh/tasks/
   # tasks = {
@@ -34,8 +76,8 @@
 
   # https://devenv.sh/tests/
   enterTest = ''
-    echo "Running tests"
-    git --version | grep --color=auto "${pkgs.git.version}"
+    pg_isready -h localhost -p 5432
+    node --env-file=.env test-redis.js
   '';
 
   # https://devenv.sh/git-hooks/
