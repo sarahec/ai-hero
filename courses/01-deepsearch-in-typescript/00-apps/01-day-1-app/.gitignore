@@ -46,3 +46,13 @@ yarn-error.log*
 .idea
 
 *.local.*
+# Devenv
+.devenv/
+.devenv.flake.nix
+devenv.local.nix
+
+# direnv
+.direnv/
+
+# pre-commit
+.pre-commit-config.yaml
