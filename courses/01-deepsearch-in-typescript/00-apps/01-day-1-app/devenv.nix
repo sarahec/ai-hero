@@ -37,6 +37,7 @@
 
   # https://devenv.sh/processes/
   processes.drizzle.exec = "drizzle-kit studio";
+  processes.web.exec = "next dev --turbo";
 
   # https://devenv.sh/services/
   services = {
