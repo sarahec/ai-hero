@@ -27,10 +27,18 @@ export const ChatPage = ({ userName }: ChatProps) => {
           aria-label="Chat messages"
         >
           {messages.map((message, index) => {
+            // Convert legacy message format to parts format if needed
+            const parts = message.parts || [
+              {
+                type: "text",
+                text: message.content || "",
+              },
+            ];
+
             return (
               <ChatMessage
                 key={index}
-                text={message.content}
+                parts={parts}
                 role={message.role}
                 userName={userName}
               />

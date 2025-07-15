@@ -2,7 +2,7 @@ import type { Message } from "ai";
 import { createDataStreamResponse, streamText } from "ai";
 import { z } from "zod";
 import { model } from "~/lib/ai";
-import { searchSerper } from "~/serper";
+
 import { auth } from "~/server/auth";
 
 export const maxDuration = 60;
@@ -27,33 +27,14 @@ export async function POST(request: Request) {
         messages,
         system: `
           You are a helpful assistant that can search the web. 
-          1. Please use the search web tool to answer the user's questions. 
-          Cite your sources whenever possible
-          and use inline markdown links like [title](url).
+          When you use your search tool, you will be given a list of sources. 
+          Please cite your sources whenever possible and use inline markdown links like [title](url).
         `,
-        tools: {
-          searchWeb: {
-            parameters: z.object({
-              query: z.string().describe("The query to search the web for"),
-            }),
-            execute: async ({ query }, { abortSignal }) => {
-              const results = await searchSerper(
-                { q: query, num: 10 },
-                abortSignal,
-              );
-
-              return results.organic.map((result) => ({
-                title: result.title,
-                link: result.link,
-                snippet: result.snippet,
-              }));
-            },
-          },
-        },
-        maxSteps: 10,
       });
 
-      result.mergeIntoDataStream(dataStream);
+      result.mergeIntoDataStream(dataStream, {
+        sendSources: true,
+      });
     },
     onError: (e) => {
       console.error(e);
