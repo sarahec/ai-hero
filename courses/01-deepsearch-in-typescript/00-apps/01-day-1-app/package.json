@@ -16,6 +16,7 @@
     "preview": "next build && next start",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "vitest",
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache"
   },
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/eslint": "^8.56.10",
     "@types/jstoxml": "^5.0.0",
     "@types/node": "^20.14.10",
@@ -55,6 +57,7 @@
     "@typescript-eslint/eslint-plugin": "^8.1.0",
     "@typescript-eslint/parser": "^8.1.0",
     "autoevals": "^0.0.119",
+    "better-sqlite3": "^12.2.0",
     "dotenv": "^16.4.7",
     "drizzle-kit": "^0.24.0",
     "eslint": "^8.57.0",
