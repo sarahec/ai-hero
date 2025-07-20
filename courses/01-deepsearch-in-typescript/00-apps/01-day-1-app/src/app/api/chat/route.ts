@@ -1,10 +1,15 @@
 import type { Message } from "ai";
-import { createDataStreamResponse, streamText } from "ai";
+import { appendResponseMessages, createDataStreamResponse, streamText } from "ai";
 import { and, count, eq, gte } from "drizzle-orm";
 import { model } from "~/lib/ai";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
-import { requests, users } from "~/server/db/schema";
+import {
+  requests,
+  users,
+  chats,
+  messages as DBMessages,
+} from "~/server/db/schema";
 
 export const maxDuration = 60;
 
@@ -41,15 +46,42 @@ export async function POST(request: Request) {
     }
   }
 
-  const body = (await request.json()) as {
-    messages: Array<Message>;
-  };
+  const {
+    messages,
+    chatId,
+  }: { messages: Array<Message>; chatId?: string } = await request.json();
 
   return createDataStreamResponse({
     execute: async (dataStream) => {
-      const { messages } = body;
-
       await db.insert(requests).values({ userId: user.id });
+
+      const finalChatId = await (async () => {
+        if (chatId) {
+          return parseInt(chatId);
+        }
+
+        const [newChat] = await db
+          .insert(chats)
+          .values({
+            userId: user.id,
+            title: messages[0]!.content.substring(0, 255),
+          })
+          .returning();
+
+        if (!newChat) {
+          throw new Error("Could not create new chat");
+        }
+
+        await db.insert(DBMessages).values({
+          chatId: newChat.id.toString(),
+          id: messages[0]!.id,
+          role: messages[0]!.role,
+          parts: messages[0]!.parts,
+          order: 0,
+        });
+
+        return newChat.id;
+      })();
 
       const result = await streamText({
         model,
@@ -59,6 +91,28 @@ export async function POST(request: Request) {
           When you use your search tool, you will be given a list of sources. 
           Please cite your sources whenever possible and use inline markdown links like [title](url).
         `,
+        onFinish: async ({ response }) => {
+          const updatedMessages = appendResponseMessages({
+            messages,
+            responseMessages: response.messages,
+          });
+
+          await db.transaction(async (tx) => {
+            await tx
+              .delete(DBMessages)
+              .where(eq(DBMessages.chatId, finalChatId.toString()));
+
+            await tx.insert(DBMessages).values(
+              updatedMessages.map((message, index) => ({
+                id: message.id,
+                chatId: finalChatId.toString(),
+                role: message.role,
+                parts: message.parts,
+                order: index,
+              })),
+            );
+          });
+        },
       });
 
       result.mergeIntoDataStream(dataStream, {
