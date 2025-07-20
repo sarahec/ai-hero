@@ -1,15 +1,14 @@
 import type { Message } from "ai";
 import { appendResponseMessages, createDataStreamResponse, streamText } from "ai";
-import { and, count, eq, gte } from "drizzle-orm";
 import { model } from "~/lib/ai";
 import { auth } from "~/server/auth";
-import { db } from "~/server/db";
 import {
-  requests,
-  users,
-  chats,
-  messages as DBMessages,
-} from "~/server/db/schema";
+  checkRateLimit,
+  createChat,
+  getUserById,
+  logRequest,
+  updateChat,
+} from "~/server/db/chat";
 
 export const maxDuration = 60;
 
@@ -20,28 +19,15 @@ export async function POST(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, session.user.id),
-  });
+  const user = await getUserById(session.user.id);
 
   if (!user) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   if (!user.isAdmin) {
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-
-    const result = await db
-      .select({ value: count() })
-      .from(requests)
-      .where(
-        and(eq(requests.userId, user.id), gte(requests.createdAt, oneDayAgo)),
-      );
-
-    const value = result[0]?.value ?? 0;
-
-    if (value > 10) {
+    const requestsCount = await checkRateLimit(user.id);
+    if (requestsCount > 10) {
       return new Response("Too many requests", { status: 429 });
     }
   }
@@ -53,35 +39,9 @@ export async function POST(request: Request) {
 
   return createDataStreamResponse({
     execute: async (dataStream) => {
-      await db.insert(requests).values({ userId: user.id });
+      await logRequest(user.id);
 
-      const finalChatId = await (async () => {
-        if (chatId) {
-          return parseInt(chatId);
-        }
-
-        const [newChat] = await db
-          .insert(chats)
-          .values({
-            userId: user.id,
-            title: messages[0]!.content.substring(0, 255),
-          })
-          .returning();
-
-        if (!newChat) {
-          throw new Error("Could not create new chat");
-        }
-
-        await db.insert(DBMessages).values({
-          chatId: newChat.id.toString(),
-          id: messages[0]!.id,
-          role: messages[0]!.role,
-          parts: messages[0]!.parts,
-          order: 0,
-        });
-
-        return newChat.id;
-      })();
+      const finalChatId = chatId ?? (await createChat(user.id, messages[0]!));
 
       const result = await streamText({
         model,
@@ -97,21 +57,7 @@ export async function POST(request: Request) {
             responseMessages: response.messages,
           });
 
-          await db.transaction(async (tx) => {
-            await tx
-              .delete(DBMessages)
-              .where(eq(DBMessages.chatId, finalChatId.toString()));
-
-            await tx.insert(DBMessages).values(
-              updatedMessages.map((message, index) => ({
-                id: message.id,
-                chatId: finalChatId.toString(),
-                role: message.role,
-                parts: message.parts,
-                order: index,
-              })),
-            );
-          });
+          await updateChat(finalChatId, updatedMessages);
         },
       });
 
