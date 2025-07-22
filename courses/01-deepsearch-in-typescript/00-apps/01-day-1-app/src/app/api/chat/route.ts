@@ -91,6 +91,7 @@ export async function POST(request: Request) {
       const result = await streamText({
         model,
         messages,
+        experimental_telemetry: { isEnabled: true },
         system: `
           You are a helpful assistant that can search the web. 
           When you use your search tool, you will be given a list of sources. 
