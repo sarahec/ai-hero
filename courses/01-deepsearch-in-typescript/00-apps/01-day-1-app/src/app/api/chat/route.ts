@@ -55,11 +55,11 @@ export async function POST(request: Request) {
     execute: async (dataStream) => {
       await db.insert(requests).values({ userId: user.id });
 
-      const finalChatId = await (async () => {
-        if (chatId) {
-          return parseInt(chatId);
-        }
+      let finalChatId: string;
 
+      if (chatId) {
+        finalChatId = chatId;
+      } else {
         const [newChat] = await db
           .insert(chats)
           .values({
@@ -72,16 +72,21 @@ export async function POST(request: Request) {
           throw new Error("Could not create new chat");
         }
 
+        dataStream.writeData({
+          type: "NEW_CHAT_CREATED",
+          chatId: newChat.id,
+        });
+
         await db.insert(DBMessages).values({
-          chatId: newChat.id.toString(),
+          chatId: newChat.id,
           id: messages[0]!.id,
           role: messages[0]!.role,
           parts: messages[0]!.parts,
           order: 0,
         });
 
-        return newChat.id;
-      })();
+        finalChatId = newChat.id;
+      }
 
       const result = await streamText({
         model,
@@ -100,12 +105,12 @@ export async function POST(request: Request) {
           await db.transaction(async (tx) => {
             await tx
               .delete(DBMessages)
-              .where(eq(DBMessages.chatId, finalChatId.toString()));
+              .where(eq(DBMessages.chatId, finalChatId));
 
             await tx.insert(DBMessages).values(
               updatedMessages.map((message, index) => ({
                 id: message.id,
-                chatId: finalChatId.toString(),
+                chatId: finalChatId,
                 role: message.role,
                 parts: message.parts,
                 order: index,
