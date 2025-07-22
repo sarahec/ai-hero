@@ -1,6 +1,8 @@
 import type { Message } from "ai";
 import { appendResponseMessages, createDataStreamResponse, streamText } from "ai";
 import { and, count, eq, gte } from "drizzle-orm";
+import { Langfuse } from "langfuse";
+import { env } from "~/env";
 import { model } from "~/lib/ai";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
@@ -10,6 +12,11 @@ import {
   chats,
   messages as DBMessages,
 } from "~/server/db/schema";
+
+// Initialize Langfuse client
+const langfuse = new Langfuse({
+  environment: env.NODE_ENV,
+});
 
 export const maxDuration = 60;
 
@@ -56,6 +63,13 @@ export async function POST(request: Request) {
       await db.insert(requests).values({ userId: user.id });
 
       let finalChatId: string;
+      
+      // Create a trace for this chat interaction
+      const trace = langfuse.trace({
+        sessionId: chatId || `temp-${Date.now()}`,
+        name: "chat",
+        userId: user.id,
+      });
 
       if (chatId) {
         finalChatId = chatId;
@@ -77,6 +91,11 @@ export async function POST(request: Request) {
           chatId: newChat.id,
         });
 
+        // Update the trace with the final chat ID
+        trace.update({
+          sessionId: newChat.id,
+        });
+
         await db.insert(DBMessages).values({
           chatId: newChat.id,
           id: messages[0]!.id,
@@ -91,7 +110,13 @@ export async function POST(request: Request) {
       const result = await streamText({
         model,
         messages,
-        experimental_telemetry: { isEnabled: true },
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: `chat-${finalChatId}`,
+          metadata: {
+            langfuseTraceId: trace.id,
+          },
+        },
         system: `
           You are a helpful assistant that can search the web. 
           When you use your search tool, you will be given a list of sources. 
@@ -118,6 +143,14 @@ export async function POST(request: Request) {
               })),
             );
           });
+          
+          // Flush the trace to Langfuse
+          await langfuse.flushAsync();
+        },
+        onError: async (error) => {
+          console.error('Error in chat stream:', error);
+          await langfuse.flushAsync();
+          throw error;
         },
       });
 
