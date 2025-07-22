@@ -3,20 +3,36 @@ import Link from "next/link";
 import { auth } from "~/server/auth/index.ts";
 import { ChatPage } from "./chat.tsx";
 import { AuthButton } from "../components/auth-button.tsx";
+import { getChats, getChat } from "~/server/db/chat.ts";
+import type { Message } from "ai";
 
-const chats = [
-  {
-    id: "1",
-    title: "My First Chat",
-  },
-];
-
-const activeChatId = "1";
-
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: {
+    id?: string;
+  };
+}) {
   const session = await auth();
   const userName = session?.user?.name ?? "Guest";
   const isAuthenticated = !!session?.user;
+  const userId = session?.user?.id;
+
+  const allChats = userId ? await getChats(userId) : [];
+  const activeChatId = searchParams.id;
+
+  let initialMessages: Message[] = [];
+  if (userId && activeChatId) {
+    const chat = await getChat(activeChatId, userId);
+    if (chat?.messages) {
+      initialMessages = chat.messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role as "user" | "assistant",
+        parts: msg.parts as Message["parts"],
+        content: "",
+      }));
+    }
+  }
 
   return (
     <div className="flex h-screen bg-gray-950">
@@ -37,11 +53,11 @@ export default async function HomePage() {
           </div>
         </div>
         <div className="-mt-1 flex-1 space-y-2 overflow-y-auto px-4 pt-1 scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600">
-          {chats.length > 0 ? (
-            chats.map((chat) => (
+          {allChats.length > 0 ? (
+            allChats.map((chat) => (
               <div key={chat.id} className="flex items-center gap-2">
                 <Link
-                  href={`/?chatId=${chat.id}`}
+                  href={`/?id=${chat.id}`}
                   className={`flex-1 rounded-lg p-3 text-left text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                     chat.id === activeChatId
                       ? "bg-gray-700"
@@ -68,7 +84,11 @@ export default async function HomePage() {
         </div>
       </div>
 
-      <ChatPage userName={userName} />
+      <ChatPage
+        userName={userName}
+        chatId={activeChatId}
+        initialMessages={initialMessages}
+      />
     </div>
   );
 }

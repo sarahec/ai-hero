@@ -1,22 +1,42 @@
 "use client";
 
-import { useChat } from "@ai-sdk/react";
+import { useChat, type Message } from "@ai-sdk/react";
 import { Loader2 } from "lucide-react";
 import { ChatMessage } from "~/components/chat-message";
 import { SignInModal } from "~/components/sign-in-modal";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { isNewChatCreated } from "~/lib/utils";
 
 interface ChatProps {
   userName: string;
+  chatId?: string;
+  initialMessages?: Message[];
 }
 
-export const ChatPage = ({ userName }: ChatProps) => {
+export const ChatPage = ({ userName, chatId, initialMessages }: ChatProps) => {
+  const router = useRouter();
   const {
     messages,
     input,
     handleInputChange,
     handleSubmit,
     isLoading,
-  } = useChat();
+    data,
+  } = useChat({
+    initialMessages,
+    body: {
+      chatId,
+    },
+  });
+
+  useEffect(() => {
+    const lastDataItem = data?.[data.length - 1];
+
+    if (isNewChatCreated(lastDataItem)) {
+      router.push(`/?id=${lastDataItem.chatId}`);
+    }
+  }, [data, router]);
 
   return (
     <>
