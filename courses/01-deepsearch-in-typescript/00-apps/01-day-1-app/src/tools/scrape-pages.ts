@@ -16,9 +16,16 @@ interface ScrapeResult {
   error?: string;
 }
 
-export const scrapePages = async (urls: string[]) => {
+export interface ScrapePagesOptions {
+  traceId?: string;
+}
+
+export const scrapePages = async (urls: string[], options: ScrapePagesOptions = {}) => {
   try {
-    const result = await bulkCrawlWebsites({ urls });
+    const result = await bulkCrawlWebsites({ 
+      urls,
+      traceId: options.traceId
+    });
     
     if (!result.success) {
       const results: ScrapeResult[] = result.results.map(r => {
@@ -88,7 +95,9 @@ export const scrapePages = async (urls: string[]) => {
 // Zod schema for the tool input
 export const scrapePagesSchema = z.object({
   urls: z.array(z.string().url("Invalid URL format")).min(1, "At least one URL is required")
-});
+}).and(z.object({
+  traceId: z.string().optional()
+}));
 
 // Type for the tool input
 export type ScrapePagesInput = z.infer<typeof scrapePagesSchema>;
